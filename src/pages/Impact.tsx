@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import Header from "@/components/layout/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSampleRECs } from "@/services/mock";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, CartesianGrid, XAxis, YAxis, Bar } from "recharts";
@@ -37,6 +38,7 @@ const Impact = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <Header />
       <header className="container mx-auto px-6 md:px-8 pt-12">
         <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Environmental Impact Dashboard – Renewable Energy Certificates</h1>
         <p className="mt-2 text-muted-foreground max-w-2xl">Track carbon offset, energy source composition, and progress powered by Hedera’s efficient ledger.</p>

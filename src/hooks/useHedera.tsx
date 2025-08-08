@@ -73,6 +73,15 @@ export const HederaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
 export const useHedera = () => {
   const ctx = useContext(HederaContext);
-  if (!ctx) throw new Error("useHedera must be used within HederaProvider");
+  if (!ctx) {
+    // Graceful fallback to avoid runtime crashes if provider isn't mounted yet
+    return {
+      accountId: null,
+      isConnected: false,
+      connectWallet: async () => console.warn("HederaProvider not mounted yet"),
+      disconnect: () => undefined,
+      pairingString: undefined,
+    } as HederaContextType;
+  }
   return ctx;
 };

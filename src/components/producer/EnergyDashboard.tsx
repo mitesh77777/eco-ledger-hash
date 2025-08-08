@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { generateSolarSnapshot } from "@/services/mock";
 import { cn } from "@/lib/utils";
 import MintRecForm from "./MintRecForm";
+import { api } from "@/services/api";
 
 const MetricCard = ({ title, value, accent }: { title: string; value: string; accent: "primary" | "accent" | "muted" }) => (
   <Card>
@@ -16,10 +16,19 @@ const MetricCard = ({ title, value, accent }: { title: string; value: string; ac
 );
 
 const EnergyDashboard = () => {
-  const [snapshot, setSnapshot] = useState(generateSolarSnapshot());
+  const [snapshot, setSnapshot] = useState({ currentOutput: 0, efficiency: 0, weatherCondition: "loading" });
 
   useEffect(() => {
-    const i = setInterval(() => setSnapshot(generateSolarSnapshot()), 10000);
+    const load = async () => {
+      try {
+        const s = await api.currentEnergy();
+        setSnapshot(s);
+      } catch (e) {
+        // keep last snapshot
+      }
+    };
+    load();
+    const i = setInterval(load, 10000);
     return () => clearInterval(i);
   }, []);
 
@@ -28,9 +37,9 @@ const EnergyDashboard = () => {
       <h2 className="text-2xl font-semibold tracking-tight mb-6">Producer dashboard</h2>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <MetricCard title="Current Output" value={`${snapshot.currentOutput.toFixed(1)} MW`} accent="primary" />
-          <MetricCard title="Efficiency" value={`${snapshot.efficiency.toFixed(1)}%`} accent="accent" />
-          <MetricCard title="Weather" value={snapshot.weather} accent="muted" />
+          <MetricCard title="Current Output" value={`${(snapshot.currentOutput||0).toFixed(1)} MW`} accent="primary" />
+          <MetricCard title="Efficiency" value={`${(snapshot.efficiency||0).toFixed(1)}%`} accent="accent" />
+          <MetricCard title="Weather" value={snapshot.weatherCondition} accent="muted" />
         </div>
         <Card className="lg:col-span-1">
           <CardHeader>

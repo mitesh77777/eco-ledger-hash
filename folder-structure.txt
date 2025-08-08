@@ -1,0 +1,1235 @@
+# REC Management MVP - Development Guide for Cursor AI
+
+## PROJECT OVERVIEW
+Build a Renewable Energy Certificate (REC) trading platform on Hedera Hashgraph. Create a working demo with REC minting, marketplace trading, and instant settlement.
+
+---
+
+## TECH STACK
+
+### Frontend
+- **Framework**: React 18 + Vite
+- **Styling**: Tailwind CSS
+- **UI Components**: Headless UI
+- **Charts**: Recharts
+- **Wallet Integration**: HashConnect SDK
+- **Blockchain**: @hashgraph/sdk
+
+### Backend
+- **Runtime**: Node.js + Express
+- **Database**: SQLite3 (simple file-based)
+- **API**: REST endpoints
+- **Environment**: dotenv
+
+### Deployment
+- **Frontend**: Vercel/Netlify
+- **Backend**: Railway/Render
+- **Blockchain**: Hedera Testnet
+
+---
+
+## PROJECT STRUCTURE
+
+```
+rec-trading-mvp/
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── common/
+│   │   │   │   ├── Header.jsx
+│   │   │   │   ├── Sidebar.jsx
+│   │   │   │   └── LoadingSpinner.jsx
+│   │   │   ├── producer/
+│   │   │   │   ├── MintRECForm.jsx
+│   │   │   │   ├── EnergyDashboard.jsx
+│   │   │   │   └── ProductionChart.jsx
+│   │   │   ├── marketplace/
+│   │   │   │   ├── RECListing.jsx
+│   │   │   │   ├── RECCard.jsx
+│   │   │   │   └── PurchaseModal.jsx
+│   │   │   └── corporate/
+│   │   │       ├── Portfolio.jsx
+│   │   │       ├── ImpactDashboard.jsx
+│   │   │       └── ComplianceReport.jsx
+│   │   ├── hooks/
+│   │   │   ├── useHedera.js
+│   │   │   ├── useWallet.js
+│   │   │   └── useRECs.js
+│   │   ├── services/
+│   │   │   ├── hederaService.js
+│   │   │   ├── apiService.js
+│   │   │   └── mockDataService.js
+│   │   ├── utils/
+│   │   │   ├── constants.js
+│   │   │   └── helpers.js
+│   │   ├── context/
+│   │   │   └── AppContext.jsx
+│   │   ├── App.jsx
+│   │   └── main.jsx
+│   ├── public/
+│   ├── package.json
+│   ├── vite.config.js
+│   └── tailwind.config.js
+├── backend/
+│   ├── src/
+│   │   ├── controllers/
+│   │   │   ├── recController.js
+│   │   │   ├── transactionController.js
+│   │   │   └── energyController.js
+│   │   ├── models/
+│   │   │   ├── database.js
+│   │   │   ├── REC.js
+│   │   │   └── Transaction.js
+│   │   ├── routes/
+│   │   │   ├── recs.js
+│   │   │   ├── transactions.js
+│   │   │   └── energy.js
+│   │   ├── services/
+│   │   │   ├── hederaService.js
+│   │   │   └── mockDataService.js
+│   │   ├── middleware/
+│   │   │   └── cors.js
+│   │   └── server.js
+│   ├── data/
+│   │   ├── mockEnergyData.json
+│   │   └── sampleRECs.json
+│   ├── package.json
+│   └── .env
+├── contracts/ (if needed)
+│   └── RECTrading.sol
+├── docs/
+│   ├── API.md
+│   └── HEDERA_SETUP.md
+└── README.md
+```
+
+---
+
+## WEEK 1: FOUNDATION + HEDERA INTEGRATION
+
+### Day 1-2: Project Setup
+
+#### Initialize Projects
+```bash
+# Create main directory
+mkdir rec-trading-mvp && cd rec-trading-mvp
+
+# Frontend setup
+npm create vite@latest frontend -- --template react
+cd frontend
+npm install @hashgraph/sdk @hashgraph/hashconnect tailwindcss @headlessui/react recharts axios
+
+# Backend setup
+cd ../
+mkdir backend && cd backend
+npm init -y
+npm install express sqlite3 dotenv cors @hashgraph/sdk
+```
+
+#### Environment Configuration
+Create `backend/.env`:
+```env
+HEDERA_NETWORK=testnet
+HEDERA_ACCOUNT_ID=your_testnet_account_id
+HEDERA_PRIVATE_KEY=your_testnet_private_key
+HEDERA_TOKEN_ID=your_rec_token_id
+PORT=3001
+```
+
+### Day 3-5: Hedera Integration
+
+#### Core Hedera Service
+Create `backend/src/services/hederaService.js`:
+```javascript
+const { Client, TokenCreateTransaction, TokenType, TokenSupplyType, TransferTransaction, AccountId, PrivateKey } = require('@hashgraph/sdk');
+
+class HederaService {
+  constructor() {
+    this.client = Client.forTestnet();
+    this.operatorId = AccountId.fromString(process.env.HEDERA_ACCOUNT_ID);
+    this.operatorKey = PrivateKey.fromString(process.env.HEDERA_PRIVATE_KEY);
+    this.client.setOperator(this.operatorId, this.operatorKey);
+  }
+
+  async createRECToken(name, symbol, initialSupply) {
+    // Token creation logic
+    const transaction = new TokenCreateTransaction()
+      .setTokenName(name)
+      .setTokenSymbol(symbol)
+      .setTokenType(TokenType.FungibleCommon)
+      .setInitialSupply(initialSupply)
+      .setTreasuryAccountId(this.operatorId)
+      .setSupplyKey(this.operatorKey);
+
+    const response = await transaction.execute(this.client);
+    const receipt = await response.getReceipt(this.client);
+    return receipt.tokenId.toString();
+  }
+
+  async transferREC(tokenId, fromAccountId, toAccountId, amount) {
+    // Transfer logic
+    const transaction = new TransferTransaction()
+      .addTokenTransfer(tokenId, fromAccountId, -amount)
+      .addTokenTransfer(tokenId, toAccountId, amount);
+
+    const response = await transaction.execute(this.client);
+    const receipt = await response.getReceipt(this.client);
+    return response.transactionId.toString();
+  }
+}
+
+module.exports = new HederaService();
+```
+
+#### Frontend Hedera Hook
+Create `frontend/src/hooks/useHedera.js`:
+```javascript
+import { useState, useEffect } from 'react';
+import { HashConnect } from '@hashgraph/hashconnect';
+
+export function useHedera() {
+  const [accountId, setAccountId] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [hashconnect, setHashconnect] = useState(null);
+
+  useEffect(() => {
+    const init = async () => {
+      const hc = new HashConnect();
+      setHashconnect(hc);
+      
+      hc.connectionStatusChangeEvent.on((connectionStatus) => {
+        setIsConnected(connectionStatus === 'Connected');
+      });
+
+      hc.accountChangeEvent.on((data) => {
+        setAccountId(data.account);
+      });
+    };
+
+    init();
+  }, []);
+
+  const connectWallet = async () => {
+    if (hashconnect) {
+      await hashconnect.connectToLocalWallet();
+    }
+  };
+
+  const mintREC = async (recData) => {
+    // Mint REC token logic
+    const response = await fetch('/api/recs/mint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(recData)
+    });
+    return response.json();
+  };
+
+  return { accountId, isConnected, connectWallet, mintREC };
+}
+```
+
+### Day 6-7: Database & Mock Data
+
+#### Database Setup
+Create `backend/src/models/database.js`:
+```javascript
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+
+class Database {
+  constructor() {
+    this.db = new sqlite3.Database(path.join(__dirname, '../../data/recs.db'));
+    this.init();
+  }
+
+  init() {
+    this.db.serialize(() => {
+      // RECs table
+      this.db.run(`CREATE TABLE IF NOT EXISTS recs (
+        id TEXT PRIMARY KEY,
+        token_id TEXT,
+        energy_source TEXT,
+        location TEXT,
+        mwh INTEGER,
+        price REAL,
+        generation_date TEXT,
+        status TEXT DEFAULT 'available',
+        owner_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+
+      // Transactions table
+      this.db.run(`CREATE TABLE IF NOT EXISTS transactions (
+        id TEXT PRIMARY KEY,
+        rec_id TEXT,
+        buyer_id TEXT,
+        seller_id TEXT,
+        amount REAL,
+        hedera_tx_id TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+    });
+  }
+
+  createREC(data) {
+    return new Promise((resolve, reject) => {
+      const stmt = this.db.prepare(`
+        INSERT INTO recs (id, token_id, energy_source, location, mwh, price, generation_date, owner_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      
+      stmt.run([data.id, data.tokenId, data.energySource, data.location, data.mwh, data.price, data.generationDate, data.ownerId], 
+        function(err) {
+          if (err) reject(err);
+          else resolve(this.lastID);
+        });
+    });
+  }
+
+  getAllRECs() {
+    return new Promise((resolve, reject) => {
+      this.db.all('SELECT * FROM recs WHERE status = "available"', (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+  }
+}
+
+module.exports = new Database();
+```
+
+#### Mock Data Service
+Create `backend/src/services/mockDataService.js`:
+```javascript
+class MockDataService {
+  generateSolarData() {
+    const hour = new Date().getHours();
+    const baseOutput = Math.sin((hour - 6) * Math.PI / 12) * 80 + 20; // Realistic solar curve
+    
+    return {
+      currentOutput: Math.max(0, baseOutput + Math.random() * 20 - 10), // MW
+      efficiency: 92 + Math.random() * 6, // 92-98%
+      weatherCondition: hour > 6 && hour < 18 ? 'sunny' : 'night',
+      temperature: 25 + Math.random() * 15, // Celsius
+      irradiance: Math.max(0, baseOutput * 10), // W/m²
+    };
+  }
+
+  generateWindData() {
+    return {
+      currentOutput: Math.random() * 100, // MW
+      windSpeed: 5 + Math.random() * 20, // m/s
+      efficiency: 85 + Math.random() * 10, // 85-95%
+      weatherCondition: 'windy',
+    };
+  }
+
+  getSampleRECs() {
+    return [
+      {
+        id: 'REC-SOLAR-001',
+        energySource: 'solar',
+        location: 'Mojave Desert, CA',
+        mwh: 100,
+        price: 45,
+        generationDate: '2024-07-01',
+        certification: 'Green-e Certified'
+      },
+      {
+        id: 'REC-WIND-002',
+        energySource: 'wind',
+        location: 'Texas Wind Farm',
+        mwh: 150,
+        price: 42,
+        generationDate: '2024-07-01',
+        certification: 'REC Registry'
+      }
+    ];
+  }
+}
+
+module.exports = new MockDataService();
+```
+
+---
+
+## WEEK 2: CORE FEATURES
+
+### Day 8-10: REC Minting Interface
+
+#### Mint REC Form Component
+Create `frontend/src/components/producer/MintRECForm.jsx`:
+```javascript
+import { useState } from 'react';
+import { useHedera } from '../../hooks/useHedera';
+
+export default function MintRECForm() {
+  const { mintREC, isConnected } = useHedera();
+  const [formData, setFormData] = useState({
+    energySource: 'solar',
+    location: 'California Solar Farm',
+    mwh: 100,
+    price: 45,
+    generationDate: new Date().toISOString().split('T')[0]
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [mintedREC, setMintedREC] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!isConnected) {
+      alert('Please connect your wallet first');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await mintREC(formData);
+      setMintedREC(result);
+      
+      // Reset form
+      setFormData({
+        ...formData,
+        mwh: 100,
+        generationDate: new Date().toISOString().split('T')[0]
+      });
+    } catch (error) {
+      console.error('Minting failed:', error);
+      alert('Failed to mint REC');
+    }
+    setIsLoading(false);
+  };
+
+  return (
+    <div className="max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
+      <h2 className="text-2xl font-bold mb-6">Mint New REC</h2>
+      
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-2">Energy Source</label>
+          <select 
+            value={formData.energySource}
+            onChange={(e) => setFormData({...formData, energySource: e.target.value})}
+            className="w-full p-2 border rounded-md"
+          >
+            <option value="solar">Solar</option>
+            <option value="wind">Wind</option>
+            <option value="hydro">Hydro</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">Location</label>
+          <input
+            type="text"
+            value={formData.location}
+            onChange={(e) => setFormData({...formData, location: e.target.value})}
+            className="w-full p-2 border rounded-md"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">Energy Generated (MWh)</label>
+          <input
+            type="number"
+            value={formData.mwh}
+            onChange={(e) => setFormData({...formData, mwh: parseInt(e.target.value)})}
+            className="w-full p-2 border rounded-md"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">Price per MWh ($)</label>
+          <input
+            type="number"
+            value={formData.price}
+            onChange={(e) => setFormData({...formData, price: parseFloat(e.target.value)})}
+            className="w-full p-2 border rounded-md"
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={isLoading || !isConnected}
+          className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 disabled:opacity-50"
+        >
+          {isLoading ? 'Minting...' : 'Mint REC'}
+        </button>
+      </form>
+
+      {mintedREC && (
+        <div className="mt-6 p-4 bg-green-50 rounded-md">
+          <h3 className="font-bold text-green-800">REC Minted Successfully!</h3>
+          <p className="text-sm text-green-600">Token ID: {mintedREC.tokenId}</p>
+          <p className="text-sm text-green-600">Transaction: {mintedREC.transactionId}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+#### Energy Dashboard Component
+Create `frontend/src/components/producer/EnergyDashboard.jsx`:
+```javascript
+import { useState, useEffect } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+
+export default function EnergyDashboard() {
+  const [energyData, setEnergyData] = useState(null);
+  const [historicalData, setHistoricalData] = useState([]);
+
+  useEffect(() => {
+    // Fetch real-time energy data
+    const fetchData = async () => {
+      const response = await fetch('/api/energy/current');
+      const data = await response.json();
+      setEnergyData(data);
+    };
+
+    fetchData();
+    const interval = setInterval(fetchData, 10000); // Update every 10 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
+  if (!energyData) return <div>Loading...</div>;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="bg-white p-6 rounded-lg shadow">
+        <h3 className="text-lg font-semibold mb-2">Current Output</h3>
+        <p className="text-3xl font-bold text-green-600">{energyData.currentOutput.toFixed(1)} MW</p>
+      </div>
+
+      <div className="bg-white p-6 rounded-lg shadow">
+        <h3 className="text-lg font-semibold mb-2">Efficiency</h3>
+        <p className="text-3xl font-bold text-blue-600">{energyData.efficiency.toFixed(1)}%</p>
+      </div>
+
+      <div className="bg-white p-6 rounded-lg shadow">
+        <h3 className="text-lg font-semibold mb-2">Weather</h3>
+        <p className="text-xl font-semibold capitalize">{energyData.weatherCondition}</p>
+      </div>
+
+      <div className="bg-white p-6 rounded-lg shadow">
+        <h3 className="text-lg font-semibold mb-2">Today's Generation</h3>
+        <p className="text-3xl font-bold text-orange-600">
+          {(energyData.currentOutput * 24 * 0.3).toFixed(0)} MWh
+        </p>
+      </div>
+    </div>
+  );
+}
+```
+
+### Day 11-12: Marketplace Interface
+
+#### REC Listing Component
+Create `frontend/src/components/marketplace/RECListing.jsx`:
+```javascript
+import { useState, useEffect } from 'react';
+import RECCard from './RECCard';
+
+export default function RECListing() {
+  const [recs, setRECs] = useState([]);
+  const [filter, setFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('price');
+
+  useEffect(() => {
+    fetchRECs();
+  }, []);
+
+  const fetchRECs = async () => {
+    const response = await fetch('/api/recs');
+    const data = await response.json();
+    setRECs(data);
+  };
+
+  const handlePurchase = async (recId) => {
+    try {
+      const response = await fetch(`/api/recs/${recId}/purchase`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (response.ok) {
+        // Remove purchased REC from listing
+        setRECs(recs.filter(rec => rec.id !== recId));
+        alert('REC purchased successfully!');
+      }
+    } catch (error) {
+      console.error('Purchase failed:', error);
+      alert('Purchase failed');
+    }
+  };
+
+  const filteredRECs = recs
+    .filter(rec => filter === 'all' || rec.energy_source === filter)
+    .sort((a, b) => {
+      if (sortBy === 'price') return a.price - b.price;
+      if (sortBy === 'mwh') return b.mwh - a.mwh;
+      return new Date(b.generation_date) - new Date(a.generation_date);
+    });
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">Available RECs</h2>
+        
+        <div className="flex space-x-4">
+          <select 
+            value={filter} 
+            onChange={(e) => setFilter(e.target.value)}
+            className="p-2 border rounded-md"
+          >
+            <option value="all">All Sources</option>
+            <option value="solar">Solar</option>
+            <option value="wind">Wind</option>
+            <option value="hydro">Hydro</option>
+          </select>
+
+          <select 
+            value={sortBy} 
+            onChange={(e) => setSortBy(e.target.value)}
+            className="p-2 border rounded-md"
+          >
+            <option value="price">Price (Low to High)</option>
+            <option value="mwh">Size (Large to Small)</option>
+            <option value="date">Date (Newest First)</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredRECs.map(rec => (
+          <RECCard 
+            key={rec.id} 
+            rec={rec} 
+            onPurchase={() => handlePurchase(rec.id)}
+          />
+        ))}
+      </div>
+
+      {filteredRECs.length === 0 && (
+        <div className="text-center py-12">
+          <p className="text-gray-500">No RECs available matching your criteria</p>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+#### REC Card Component
+Create `frontend/src/components/marketplace/RECCard.jsx`:
+```javascript
+export default function RECCard({ rec, onPurchase }) {
+  const getSourceIcon = (source) => {
+    const icons = {
+      solar: '☀️',
+      wind: '💨',
+      hydro: '💧'
+    };
+    return icons[source] || '⚡';
+  };
+
+  const getSourceColor = (source) => {
+    const colors = {
+      solar: 'text-yellow-600',
+      wind: 'text-blue-600', 
+      hydro: 'text-cyan-600'
+    };
+    return colors[source] || 'text-gray-600';
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-2">
+            <span className="text-2xl">{getSourceIcon(rec.energy_source)}</span>
+            <span className={`font-semibold capitalize ${getSourceColor(rec.energy_source)}`}>
+              {rec.energy_source}
+            </span>
+          </div>
+          <div className="text-right">
+            <p className="text-2xl font-bold">${rec.price}</p>
+            <p className="text-sm text-gray-500">per MWh</p>
+          </div>
+        </div>
+
+        <div className="space-y-2 mb-4">
+          <div className="flex justify-between">
+            <span className="text-gray-600">Location:</span>
+            <span className="font-medium">{rec.location}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Size:</span>
+            <span className="font-medium">{rec.mwh} MWh</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Generated:</span>
+            <span className="font-medium">{new Date(rec.generation_date).toLocaleDateString()}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Total Cost:</span>
+            <span className="font-bold text-green-600">${(rec.price * rec.mwh).toLocaleString()}</span>
+          </div>
+        </div>
+
+        <button
+          onClick={onPurchase}
+          className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition-colors"
+        >
+          Purchase REC
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
+### Day 13-14: Corporate Dashboard
+
+#### Portfolio Component
+Create `frontend/src/components/corporate/Portfolio.jsx`:
+```javascript
+import { useState, useEffect } from 'react';
+
+export default function Portfolio() {
+  const [portfolio, setPortfolio] = useState([]);
+  const [stats, setStats] = useState({
+    totalRECs: 0,
+    totalMWh: 0,
+    totalSpent: 0,
+    carbonOffset: 0
+  });
+
+  useEffect(() => {
+    fetchPortfolio();
+  }, []);
+
+  const fetchPortfolio = async () => {
+    const response = await fetch('/api/portfolio');
+    const data = await response.json();
+    setPortfolio(data.recs);
+    setStats(data.stats);
+  };
+
+  const handleRetire = async (recId) => {
+    try {
+      await fetch(`/api/recs/${recId}/retire`, { method: 'POST' });
+      fetchPortfolio(); // Refresh data
+    } catch (error) {
+      console.error('Failed to retire REC:', error);
+    }
+  };
+
+  return (
+    <div>
+      {/* Stats Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-semibold mb-2">Total RECs</h3>
+          <p className="text-3xl font-bold text-green-600">{stats.totalRECs}</p>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-semibold mb-2">Total Energy</h3>
+          <p className="text-3xl font-bold text-blue-600">{stats.totalMWh} MWh</p>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-semibold mb-2">Total Investment</h3>
+          <p className="text-3xl font-bold text-purple-600">${stats.totalSpent.toLocaleString()}</p>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-semibold mb-2">Carbon Offset</h3>
+          <p className="text-3xl font-bold text-orange-600">{stats.carbonOffset.toFixed(1)} tons CO₂</p>
+        </div>
+      </div>
+
+      {/* REC List */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-6 border-b">
+          <h2 className="text-xl font-bold">Your REC Portfolio</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Size</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Purchase Date</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {portfolio.map(rec => (
+                <tr key={rec.id}>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <span className="mr-2">
+                        {rec.energy_source === 'solar' && '☀️'}
+                        {rec.energy_source === 'wind' && '💨'}
+                        {rec.energy_source === 'hydro' && '💧'}
+                      </span>
+                      <span className="capitalize">{rec.energy_source}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">{rec.location}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">{rec.mwh} MWh</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    {new Date(rec.purchase_date).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`px-2 py-1 text-xs rounded-full ${
+                      rec.status === 'active' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {rec.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    {rec.status === 'active' && (
+                      <button
+                        onClick={() => handleRetire(rec.id)}
+                        className="text-red-600 hover:text-red-900"
+                      >
+                        Retire
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+#### Impact Dashboard Component
+Create `frontend/src/components/corporate/ImpactDashboard.jsx`:
+```javascript
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+
+export default function ImpactDashboard({ portfolio }) {
+  const calculateImpact = () => {
+    const energyBySource = portfolio.reduce((acc, rec) => {
+      acc[rec.energy_source] = (acc[rec.energy_source] || 0) + rec.mwh;
+      return acc;
+    }, {});
+
+    const totalMWh = portfolio.reduce((sum, rec) => sum + rec.mwh, 0);
+    const carbonOffset = totalMWh * 0.4; // Approximate CO2 offset per MWh
+
+    return { energyBySource, totalMWh, carbonOffset };
+  };
+
+  const { energyBySource, totalMWh, carbonOffset } = calculateImpact();
+
+  const pieData = Object.entries(energyBySource).map(([source, mwh]) => ({
+    name: source.charAt(0).toUpperCase() + source.slice(1),
+    value: mwh,
+    percentage: ((mwh / totalMWh) * 100).toFixed(1)
+  }));
+
+  const COLORS = {
+    Solar: '#F59E0B',
+    Wind: '#3B82F6',
+    Hydro: '#06B6D4'
+  };
+
+  const monthlyData = [
+    { month: 'Jan', renewable: 120, traditional: 80 },
+    { month: 'Feb', renewable: 150, traditional: 70 },
+    { month: 'Mar', renewable: 180, traditional: 60 },
+    { month: 'Apr', renewable: 220, traditional: 40 },
+    { month: 'May', renewable: 280, traditional: 20 },
+    { month: 'Jun', renewable: 320, traditional: 10 }
+  ];
+
+  return (
+    <div className="space-y-8">
+      {/* Key Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-gradient-to-r from-green-400 to-green-600 text-white p-6 rounded-lg">
+          <h3 className="text-lg font-semibold mb-2">Renewable Energy %</h3>
+          <p className="text-3xl font-bold">{totalMWh > 0 ? '100%' : '0%'}</p>
+          <p className="text-green-100">of total energy consumption</p>
+        </div>
+
+        <div className="bg-gradient-to-r from-blue-400 to-blue-600 text-white p-6 rounded-lg">
+          <h3 className="text-lg font-semibold mb-2">Carbon Offset</h3>
+          <p className="text-3xl font-bold">{carbonOffset.toFixed(0)}</p>
+          <p className="text-blue-100">tons CO₂ equivalent</p>
+        </div>
+
+        <div className="bg-gradient-to-r from-purple-400 to-purple-600 text-white p-6 rounded-lg">
+          <h3 className="text-lg font-semibold mb-2">ESG Score</h3>
+          <p className="text-3xl font-bold">A+</p>
+          <p className="text-purple-100">Environmental rating</p>
+        </div>
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Energy Source Distribution */}
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-bold mb-4">Energy Source Distribution</h3>
+          {pieData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={pieData}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={100}
+                  fill="#8884d8"
+                  dataKey="value"
+                  label={({ name, percentage }) => `${name}: ${percentage}%`}
+                >
+                  {pieData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[entry.name] || '#8884d8'} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value) => [`${value} MWh`, 'Energy']} />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-300 flex items-center justify-center text-gray-500">
+              No data available
+            </div>
+          )}
+        </div>
+
+        {/* Monthly Progress */}
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-bold mb-4">Renewable Energy Progress</h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={monthlyData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="month" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="renewable" fill="#10B981" name="Renewable" />
+              <Bar dataKey="traditional" fill="#EF4444" name="Traditional" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Environmental Impact Details */}
+      <div className="bg-white p-6 rounded-lg shadow">
+        <h3 className="text-lg font-bold mb-4">Environmental Impact Summary</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="text-center p-4 bg-green-50 rounded-lg">
+            <div className="text-2xl mb-2">🌱</div>
+            <div className="text-2xl font-bold text-green-600">{(carbonOffset * 2.5).toFixed(0)}</div>
+            <div className="text-sm text-gray-600">Trees Equivalent</div>
+          </div>
+
+          <div className="text-center p-4 bg-blue-50 rounded-lg">
+            <div className="text-2xl mb-2">🚗</div>
+            <div className="text-2xl font-bold text-blue-600">{(carbonOffset * 2500).toFixed(0)}</div>
+            <div className="text-sm text-gray-600">Miles Not Driven</div>
+          </div>
+
+          <div className="text-center p-4 bg-yellow-50 rounded-lg">
+            <div className="text-2xl mb-2">🏠</div>
+            <div className="text-2xl font-bold text-yellow-600">{Math.floor(totalMWh / 10.8)}</div>
+            <div className="text-sm text-gray-600">Homes Powered</div>
+          </div>
+
+          <div className="text-center p-4 bg-purple-50 rounded-lg">
+            <div className="text-2xl mb-2">⚡</div>
+            <div className="text-2xl font-bold text-purple-600">{totalMWh.toFixed(0)}</div>
+            <div className="text-sm text-gray-600">Clean MWh</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+## BACKEND API ENDPOINTS
+
+### Day 14: Complete Backend APIs
+
+#### REC Controller
+Create `backend/src/controllers/recController.js`:
+```javascript
+const db = require('../models/database');
+const hederaService = require('../services/hederaService');
+const { v4: uuidv4 } = require('uuid');
+
+class RECController {
+  async getAllRECs(req, res) {
+    try {
+      const recs = await db.getAllRECs();
+      res.json(recs);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async mintREC(req, res) {
+    try {
+      const { energySource, location, mwh, price, generationDate } = req.body;
+      
+      // Create token on Hedera
+      const tokenName = `REC-${energySource.toUpperCase()}-${Date.now()}`;
+      const tokenSymbol = `REC${energySource.charAt(0).toUpperCase()}`;
+      const tokenId = await hederaService.createRECToken(tokenName, tokenSymbol, mwh);
+
+      // Save to database
+      const recData = {
+        id: uuidv4(),
+        tokenId,
+        energySource,
+        location,
+        mwh,
+        price,
+        generationDate,
+        ownerId: req.body.ownerId || 'producer-1'
+      };
+
+      await db.createREC(recData);
+
+      res.json({
+        success: true,
+        rec: recData,
+        tokenId,
+        transactionId: `0.0.${Date.now()}` // Mock transaction ID
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async purchaseREC(req, res) {
+    try {
+      const { id } = req.params;
+      const { buyerId } = req.body;
+
+      // Get REC details
+      const rec = await db.getRECById(id);
+      if (!rec) {
+        return res.status(404).json({ error: 'REC not found' });
+      }
+
+      // Execute transfer on Hedera (mock for demo)
+      const transactionId = `0.0.${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      // Update ownership in database
+      await db.updateRECOwner(id, buyerId);
+
+      // Record transaction
+      await db.createTransaction({
+        id: uuidv4(),
+        recId: id,
+        buyerId,
+        sellerId: rec.owner_id,
+        amount: rec.price * rec.mwh,
+        hederaTxId: transactionId
+      });
+
+      res.json({
+        success: true,
+        transactionId,
+        message: 'REC purchased successfully'
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async retireREC(req, res) {
+    try {
+      const { id } = req.params;
+      
+      await db.updateRECStatus(id, 'retired');
+      
+      res.json({
+        success: true,
+        message: 'REC retired successfully'
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+}
+
+module.exports = new RECController();
+```
+
+#### Routes Setup
+Create `backend/src/routes/recs.js`:
+```javascript
+const express = require('express');
+const router = express.Router();
+const recController = require('../controllers/recController');
+
+router.get('/', recController.getAllRECs);
+router.post('/mint', recController.mintREC);
+router.post('/:id/purchase', recController.purchaseREC);
+router.post('/:id/retire', recController.retireREC);
+
+module.exports = router;
+```
+
+#### Main Server
+Create `backend/src/server.js`:
+```javascript
+const express = require('express');
+const cors = require('cors');
+require('dotenv').config();
+
+const recRoutes = require('./routes/recs');
+const mockDataService = require('./services/mockDataService');
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Routes
+app.use('/api/recs', recRoutes);
+
+// Mock energy data endpoint
+app.get('/api/energy/current', (req, res) => {
+  const solarData = mockDataService.generateSolarData();
+  res.json(solarData);
+});
+
+// Portfolio endpoint
+app.get('/api/portfolio', async (req, res) => {
+  // Mock portfolio data
+  const portfolio = [
+    {
+      id: 'rec-1',
+      energy_source: 'solar',
+      location: 'California',
+      mwh: 100,
+      purchase_date: '2024-07-01',
+      status: 'active'
+    }
+  ];
+
+  const stats = {
+    totalRECs: portfolio.length,
+    totalMWh: portfolio.reduce((sum, rec) => sum + rec.mwh, 0),
+    totalSpent: 4500,
+    carbonOffset: 40
+  };
+
+  res.json({ recs: portfolio, stats });
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+```
+
+---
+
+## PACKAGE.JSON FILES
+
+#### Frontend package.json
+```json
+{
+  "name": "rec-trading-frontend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@hashgraph/sdk": "^2.40.0",
+    "@hashgraph/hashconnect": "^1.3.2",
+    "@headlessui/react": "^1.7.17",
+    "recharts": "^2.8.0",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.37",
+    "@types/react-dom": "^18.2.15",
+    "@vitejs/plugin-react": "^4.1.0",
+    "vite": "^4.5.0",
+    "tailwindcss": "^3.3.5",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.31"
+  }
+}
+```
+
+#### Backend package.json  
+```json
+{
+  "name": "rec-trading-backend",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "@hashgraph/sdk": "^2.40.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
+```
+
+---
+
+## FINAL DEMO CHECKLIST
+
+### Before Demo Day:
+- [ ] All components render without errors
+- [ ] Hedera testnet integration works
+- [ ] Mock data displays realistically  
+- [ ] Purchase flow completes successfully
+- [ ] Responsive design on mobile/desktop
+- [ ] Demo video recorded and uploaded
+- [ ] GitHub repo cleaned up with good README
+- [ ] Environment variables documented
+- [ ] Deploy frontend to Vercel/Netlify
+- [ ] Deploy backend to Railway/Render
+
+### Demo Script (5 minutes):
+1. **Problem** (30s): "REC trading is slow and expensive"
+2. **Producer Flow** (90s): Mint REC from solar data
+3. **Buyer Flow** (90s): Purchase REC with instant settlement  
+4. **Impact** (60s): Show environmental benefits
+5. **Business** (30s): Market opportunity and revenue model
+
+### Key Messages:
+- **90% cost reduction** vs traditional brokers
+- **5-second settlement** vs 7-day traditional
+- **$15B market opportunity** 
+- **Perfect sustainability alignment** with Hedera's energy efficiency
+- **Real environmental impact** measurement
+
+This MVP focuses on **working functionality over fancy features**. Better to have 3 things work perfectly than 10 things work poorly. The judges want to see you solve a real problem with clear business value using Hedera's unique capabilities.

@@ -3,9 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { api } from "@/services/api";
+import { useHedera } from "@/hooks/useHedera";
 
 const MintRecForm = () => {
   const { toast } = useToast();
+  const { isConnected, isAuthed, authenticate } = useHedera();
   const [form, setForm] = useState({
     energySource: "solar",
     location: "California Solar Farm",
@@ -14,9 +17,36 @@ const MintRecForm = () => {
     generationDate: new Date().toISOString().split("T")[0],
   });
 
-  const onSubmit = (e: React.FormEvent) => {
+  const [loading, setLoading] = useState(false);
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast({ title: "REC minted", description: `Minted ${form.mwh} MWh (${form.energySource}).` });
+    if (!isConnected) {
+      toast({ title: "Connect wallet", description: "Please connect your Hedera wallet to mint." });
+      return;
+    }
+    if (!isAuthed) {
+      toast({ title: "Authenticate", description: "Please authenticate to continue." });
+      try { await authenticate(); } catch {}
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await api.mintREC({
+        energySource: form.energySource,
+        location: form.location,
+        mwh: form.mwh,
+        price: form.price,
+        generationDate: form.generationDate,
+        // ownerId is set server-side to the treasury (operator) for transfer simplicity
+      });
+      toast({ title: "REC minted", description: `Token ${res.tokenId} | ${res.rec.id}` });
+    } catch (e: any) {
+      const msg: string = e?.message || String(e);
+      const detail = msg.includes("Hedera not configured") ? "Set backend .env (HEDERA_ACCOUNT_ID & HEDERA_PRIVATE_KEY) and restart." : undefined;
+      toast({ title: "Mint failed", description: detail ? `${msg}. ${detail}` : msg });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -51,7 +81,7 @@ const MintRecForm = () => {
         <Label>Generation Date</Label>
         <Input type="date" value={form.generationDate} onChange={(e) => setForm((f) => ({ ...f, generationDate: e.target.value }))} />
       </div>
-      <Button type="submit" variant="hero" className="w-full">Mint REC</Button>
+  <Button type="submit" variant="hero" className="w-full" disabled={loading || !isConnected}>{loading ? "Minting..." : "Mint REC"}</Button>
     </form>
   );
 };

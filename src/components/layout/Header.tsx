@@ -15,6 +15,7 @@ const Header = () => {
           <a href="#producer" className="story-link text-muted-foreground hover:text-foreground transition-colors">Producer</a>
           <a href="#market" className="story-link text-muted-foreground hover:text-foreground transition-colors">Marketplace</a>
           <Link to="/impact" className="story-link text-muted-foreground hover:text-foreground transition-colors">Impact</Link>
+          <Link to="/portfolio" className="story-link text-muted-foreground hover:text-foreground transition-colors">Portfolio</Link>
         </nav>
         <div className="flex items-center gap-2">
           <Button variant="outline">Docs</Button>

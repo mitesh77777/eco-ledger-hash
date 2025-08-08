@@ -1,19 +1,21 @@
+'use client'
 import { Button } from "@/components/ui/button";
 import { useHedera } from "@/hooks/useHedera";
-import { useMemo } from "react";
-
-const formatId = (id: string) => (id.length > 10 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id);
 
 const WalletConnectButton = () => {
-  const { accountId, isConnected, isReady, connectWallet, disconnect } = useHedera();
-  const label = useMemo(() => (isConnected && accountId ? formatId(accountId) : "Connect Wallet"), [isConnected, accountId]);
-
+  const { isReady, isConnected, isConnecting, accountId, connectWallet, authenticate, disconnect, resetSession } = useHedera();
+  // authenticate is now called automatically after connect
   return (
     <div className="flex items-center gap-2">
-      {isConnected ? (
-        <Button variant="glow" onClick={disconnect}>{label}</Button>
+      {!isConnected ? (
+        <Button variant="glow" disabled={!isReady || isConnecting} onClick={connectWallet}>
+          {isConnecting ? "Connecting..." : "Connect Wallet"}
+        </Button>
       ) : (
-        <Button variant="glow" className="animate-pulse-glow" onClick={connectWallet} disabled={!isReady}>{label}</Button>
+        <>
+          <Button variant="outline" onClick={disconnect}>{accountId || "Disconnect"}</Button>
+          <Button variant="ghost" onClick={resetSession}>Reset</Button>
+        </>
       )}
     </div>
   );

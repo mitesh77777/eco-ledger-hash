@@ -8,6 +8,13 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    proxy: {
+      "/api": {
+        target: "http://localhost:3001",
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   plugins: [
     react(),
@@ -17,6 +24,18 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // Polyfills for browser
+      buffer: 'buffer',
+      process: 'process/browser',
+      stream: 'stream-browserify',
+      crypto: 'crypto-browserify',
     },
+  },
+  define: {
+    global: 'window',
+    'process.env': {},
+  },
+  optimizeDeps: {
+    include: ['buffer', 'process', 'stream-browserify', 'crypto-browserify'],
   },
 }));

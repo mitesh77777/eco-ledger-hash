@@ -60,9 +60,32 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Development
+
+- Install
+	- Frontend: `npm i`
+	- Backend: `cd backend && npm i`
+
+- Run
+	- Backend: `cd backend && npm run dev`
+	- Frontend: `npm run dev`
+
+- WalletConnect setup
+	- Set your WalletConnect Cloud project id for the frontend:
+		- `export VITE_WALLETCONNECT_PROJECT_ID=your_id`
+	- Or create a `.env.local` at repo root with the same key.
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/59a5b87f-2843-41e7-ae18-7a6945f03855) and click on Share -> Publish.
+
+### Go live (manual)
+- Backend (Railway/Render/Heroku)
+	- Set env: HEDERA_NETWORK=testnet, HEDERA_ACCOUNT_ID, HEDERA_PRIVATE_KEY, PORT
+	- Start command: node src/server.js
+- Frontend (Vercel/Netlify)
+	- Env: VITE_API_URL=https://your-backend-host, VITE_WALLETCONNECT_PROJECT_ID=your_id
+	- Build: npm run build, Output: dist
 
 ## Can I connect a custom domain to my Lovable project?
 

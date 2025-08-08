@@ -3,6 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Dev CSP: allow HashConnect crypto (unsafe-eval) and WebSocket connections -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://verify.walletconnect.org blob: data:; connect-src 'self' https: wss:; img-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' https:; font-src 'self' https: data:; frame-src https://verify.walletconnect.org;" />
     <title>REC Trading on Hedera | Eco Ledger</title>
     <meta name="description" content="Mint, trade, and settle Renewable Energy Certificates (RECs) instantly on Hedera Hashgraph." />
     <meta name="author" content="Eco Ledger" />

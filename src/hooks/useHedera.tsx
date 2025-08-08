@@ -7,6 +7,7 @@ let HashConnectRef: any = null;
 export type HederaContextType = {
   accountId: string | null;
   isConnected: boolean;
+  isReady: boolean;
   connectWallet: () => Promise<void>;
   disconnect: () => void;
   pairingString?: string;
@@ -50,14 +51,26 @@ export const HederaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [toast]);
 
   const connectWallet = useCallback(async () => {
-    if (!ready || !hashconnect.current) return;
+    if (!hashconnect.current) return;
     try {
-      const state = await hashconnect.current.connect();
-      const pairing = state?.pairingString || pairingString;
-      if (pairing) await hashconnect.current.connectToLocalWallet(pairing);
+      if (!ready) {
+        // Initialize not finished yet
+        toast({ title: "Initializing wallet...", description: "Please try again in a second." });
+        return;
+      }
+      // Try to discover local wallets (HashPack)
+      await hashconnect.current.findLocalWallets?.();
+      const state = await hashconnect.current.connect?.();
+      const pairing = state?.pairingString || pairingString || hashconnect.current?.pairingString;
+      if (hashconnect.current.connectToLocalWallet) {
+        // Some versions require pairing string, others not
+        if (pairing) await hashconnect.current.connectToLocalWallet(pairing);
+        else await hashconnect.current.connectToLocalWallet();
+      }
+      toast({ title: "Check your wallet", description: "Approve the pairing request in HashPack." });
     } catch (e) {
       console.error("connectWallet error", e);
-      toast({ title: "Connection failed", description: "Open HashPack and try again." });
+      toast({ title: "Connection failed", description: "Is HashPack installed and unlocked?" });
     }
   }, [ready, pairingString, toast]);
 
@@ -66,7 +79,7 @@ export const HederaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     toast({ title: "Disconnected" });
   }, [toast]);
 
-  const value = useMemo(() => ({ accountId, isConnected: !!accountId, connectWallet, disconnect, pairingString }), [accountId, connectWallet, disconnect, pairingString]);
+  const value = useMemo(() => ({ accountId, isConnected: !!accountId, isReady: ready, connectWallet, disconnect, pairingString }), [accountId, ready, connectWallet, disconnect, pairingString]);
 
   return <HederaContext.Provider value={value}>{children}</HederaContext.Provider>;
 };

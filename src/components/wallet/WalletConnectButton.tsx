@@ -5,7 +5,7 @@ import { useMemo } from "react";
 const formatId = (id: string) => (id.length > 10 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id);
 
 const WalletConnectButton = () => {
-  const { accountId, isConnected, connectWallet, disconnect } = useHedera();
+  const { accountId, isConnected, isReady, connectWallet, disconnect } = useHedera();
   const label = useMemo(() => (isConnected && accountId ? formatId(accountId) : "Connect Wallet"), [isConnected, accountId]);
 
   return (
@@ -13,7 +13,7 @@ const WalletConnectButton = () => {
       {isConnected ? (
         <Button variant="glow" onClick={disconnect}>{label}</Button>
       ) : (
-        <Button variant="glow" className="animate-pulse-glow" onClick={connectWallet}>{label}</Button>
+        <Button variant="glow" className="animate-pulse-glow" onClick={connectWallet} disabled={!isReady}>{label}</Button>
       )}
     </div>
   );

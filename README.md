@@ -1,4 +1,4 @@
-# Eco Ledger — Hedera REC Trading MVP
+# Eco Ledger — Hedera REC Trading on Hedera
 
 Mint, trade, and retire Renewable Energy Certificates (RECs) on Hedera testnet with wallet-based authentication and on-chain HTS operations.
 

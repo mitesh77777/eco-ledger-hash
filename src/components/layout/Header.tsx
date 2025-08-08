@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import WalletConnectButton from "@/components/wallet/WalletConnectButton";
 
 const Header = () => {
   return (
@@ -14,11 +15,11 @@ const Header = () => {
         <nav className="hidden md:flex items-center gap-6 text-sm">
           <a href="#producer" className="text-muted-foreground hover:text-foreground transition-colors">Producer</a>
           <a href="#market" className="text-muted-foreground hover:text-foreground transition-colors">Marketplace</a>
-          <a href="#impact" className="text-muted-foreground hover:text-foreground transition-colors">Impact</a>
+          <Link to="/impact" className="text-muted-foreground hover:text-foreground transition-colors">Impact</Link>
         </nav>
         <div className="flex items-center gap-2">
           <Button variant="outline">Docs</Button>
-          <Button variant="glow" className="animate-pulse-glow">Connect Wallet</Button>
+          <WalletConnectButton />
         </div>
       </div>
     </header>
